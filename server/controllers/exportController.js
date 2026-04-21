@@ -1,5 +1,6 @@
 const Analysis = require('../models/Analysis');
 const { generateAnalysisPdf } = require('../services/pdfGenerator');
+const { isValidObjectId } = require('../utils/validation');
 
 async function exportAnalysisPdf(req, res, next) {
   try {
@@ -7,6 +8,9 @@ async function exportAnalysisPdf(req, res, next) {
 
     let payload = analysis;
     if (!payload && analysisId) {
+      if (!isValidObjectId(analysisId)) {
+        return res.status(400).json({ message: 'Invalid analysis id' });
+      }
       payload = await Analysis.findById(analysisId).lean();
     }
 

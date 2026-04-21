@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const mongoose = require('mongoose');
 
 const analyzeSchema = z.object({
   jobDescriptionText: z.string().min(20, 'Job description must be at least 20 characters'),
@@ -47,8 +48,13 @@ const bookmarkSchema = z.object({
   jobDescriptionText: z.string().min(20),
 });
 
+function isValidObjectId(value) {
+  return mongoose.Types.ObjectId.isValid(value);
+}
+
 module.exports = {
   analyzeSchema,
   saveAnalysisSchema,
   bookmarkSchema,
+  isValidObjectId,
 };
