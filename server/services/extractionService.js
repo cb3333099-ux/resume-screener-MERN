@@ -1,114 +1,104 @@
-const { SKILLS_DICTIONARY } = require('../utils/skillsDict');
+const { default: pdfParse } = require('pdf-parse');
+const {
+  analyzeSkills,
+  detectDegree,
+  extractExperienceYearsFromJD,
+  extractExperienceYearsFromResume,
+  normalizeText,
+} = require('../services/extractionService');
+const {
+  buildRecommendations,
+  computeATSScore,
+  computeEducationMatch,
+  computeExperienceMatch,
+  computeOverallScore,
+  computeSkillMatchScore,
+} = require('../services/scoringService');
+const { analyzeSchema } = require('../utils/validation');
 
-function normalizeText(text = '') {
-  return text.toLowerCase().replace(/\s+/g, ' ').trim();
-}
+async function analyzeResume(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'resumePdf file is required' });
+    }
 
-function unique(items) {
-  return [...new Set(items)];
-}
+    const parsedInput = analyzeSchema.safeParse(req.body);
+    if (!parsedInput.success) {
+      return res.status(400).json({ message: parsedInput.error.issues[0].message });
+    }
 
-function containsWord(text, term) {
-  if (term.includes('+')) {
-    return text.includes(term);
+    const { jobDescriptionText, jobTitle = '', company = '' } = parsedInput.data;
+    const pdfData = await pdfParse(req.file.buffer);
+    const resumeText = pdfData.text || '';
+
+    const skills = analyzeSkills(jobDescriptionText, resumeText);
+    const skillMatchScore = computeSkillMatchScore(skills);
+
+    const requiredYears = extractExperienceYearsFromJD(jobDescriptionText);
+    const candidateYears = extractExperienceYearsFromResume(resumeText);
+    const experience = computeExperienceMatch(requiredYears, candidateYears);
+
+    const education = computeEducationMatch(detectDegree(jobDescriptionText), detectDegree(resumeText));
+
+    const normalizedResume = normalizeText(resumeText);
+    const hasEmail = /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/.test(resumeText);
+    const hasPhone = /(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{3}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}/.test(resumeText);
+    const hasSections = {
+      experience: /\bexperience\b/i.test(normalizedResume),
+      skills: /\bskills\b/i.test(normalizedResume),
+      education: /\beducation\b/i.test(normalizedResume),
+    };
+
+    const keywordCoverage = skills.jdSkills.length
+      ? skills.matched.length / skills.jdSkills.length
+      : 0;
+
+    const { atsScore, warnings } = computeATSScore({
+      resumeText,
+      hasEmail,
+      hasPhone,
+      hasSections,
+      keywordCoverage,
+    });
+
+    const overallScore = computeOverallScore({
+      skillMatchScore,
+      experienceScore: experience.score,
+      educationScore: education.score,
+      atsScore,
+    });
+
+    const recommendations = buildRecommendations({
+      skills,
+      atsWarnings: warnings,
+      experience,
+      education,
+    });
+
+    return res.status(200).json({
+      resumeFileName: req.file.originalname,
+      resumeText,
+      jobDescriptionText,
+      jobTitle,
+      company,
+      overallScore,
+      atsScore,
+      skillMatchScore,
+      experience,
+      education,
+      skills: {
+        matched: skills.matched,
+        missing: skills.missing,
+        optional: skills.optional,
+      },
+      recommendations,
+      atsWarnings: warnings,
+    });
+  } catch (error) {
+    next(error);
   }
-  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`\\b${escaped}\\b`, 'i');
-  return regex.test(text);
-}
-
-function extractSkillsFromText(text) {
-  const normalized = normalizeText(text);
-  return unique(SKILLS_DICTIONARY.filter((skill) => containsWord(normalized, skill)));
-}
-
-function extractOptionalSkillsFromJD(jdText) {
-  const normalized = normalizeText(jdText);
-  const optionalSectionMatch = normalized.match(
-    /(nice to have|preferred qualifications?|bonus skills?)[:\s\-]*([\s\S]{0,500})/
-  );
-  if (!optionalSectionMatch) return [];
-  return extractSkillsFromText(optionalSectionMatch[2]);
-}
-
-function extractExperienceYearsFromJD(jdText) {
-  const text = normalizeText(jdText);
-  const patterns = [
-    /(?:minimum|min|at least)\s*(\d+)\+?\s*(?:years|yrs)/i,
-    /(\d+)\+?\s*(?:years|yrs)\s*(?:of)?\s*experience/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) return Number(match[1]);
-  }
-
-  return 0;
-}
-
-function parseYearToken(token) {
-  const currentYear = new Date().getFullYear();
-  const cleaned = token.toLowerCase();
-  if (cleaned.includes('present') || cleaned.includes('current')) return currentYear;
-  const yearMatch = cleaned.match(/(19|20)\d{2}/);
-  if (yearMatch) return Number(yearMatch[0]);
-  return null;
-}
-
-function extractExperienceYearsFromResume(resumeText) {
-  const text = resumeText || '';
-  const rangeRegex = /(\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)?\s*(?:19|20)\d{2})\s*[-–]\s*(present|current|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)?\s*(?:19|20)\d{2})/gi;
-  const ranges = [...text.matchAll(rangeRegex)];
-
-  let totalYears = 0;
-  ranges.forEach((match) => {
-    const startYear = parseYearToken(match[1]);
-    const endYear = parseYearToken(match[2]);
-    if (!startYear || !endYear || endYear < startYear) return;
-    totalYears += endYear - startYear;
-  });
-
-  if (totalYears > 0) return Math.min(totalYears, 40);
-
-  const standaloneYears = [...text.matchAll(/\b(19|20)\d{2}\b/g)].map((m) => Number(m[0]));
-  if (standaloneYears.length >= 2) {
-    const span = Math.max(...standaloneYears) - Math.min(...standaloneYears);
-    if (span > 0) return Math.min(span, 40);
-  }
-
-  return 0;
-}
-
-function detectDegree(text) {
-  const normalized = normalizeText(text);
-  if (/ph\.?d|doctorate/.test(normalized)) return 'phd';
-  if (/master'?s|m\.?s\.?|mba|mtech/.test(normalized)) return 'master';
-  if (/bachelor'?s|b\.?s\.?|b\.?tech|bca|bsc|ba\b/.test(normalized)) return 'bachelor';
-  if (/high school|secondary|diploma/.test(normalized)) return 'highschool';
-  return 'unknown';
-}
-
-function analyzeSkills(jdText, resumeText) {
-  const jdSkills = extractSkillsFromText(jdText);
-  const resumeSkills = extractSkillsFromText(resumeText);
-  const optionalSkills = extractOptionalSkillsFromJD(jdText);
-
-  const matched = jdSkills.filter((skill) => resumeSkills.includes(skill));
-  const missing = jdSkills.filter((skill) => !resumeSkills.includes(skill));
-
-  return {
-    jdSkills,
-    resumeSkills,
-    matched,
-    missing,
-    optional: optionalSkills,
-  };
 }
 
 module.exports = {
-  normalizeText,
-  analyzeSkills,
-  extractExperienceYearsFromJD,
-  extractExperienceYearsFromResume,
-  detectDegree,
+  analyzeResume,
 };
