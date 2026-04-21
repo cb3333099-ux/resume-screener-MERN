@@ -1,104 +1,77 @@
-const { default: pdfParse } = require('pdf-parse');
-const {
+const { SKILLS_DICTIONARY } = require('../utils/skillsDict');
+
+function normalizeText(text) {
+  return text.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function matchesSkill(normalizedText, skill) {
+  return new RegExp(`(?<![a-z0-9])${escapeRegex(skill)}(?![a-z0-9])`).test(normalizedText);
+}
+
+function analyzeSkills(jdText, resumeText) {
+  const normalizedJD = normalizeText(jdText);
+  const normalizedResume = normalizeText(resumeText);
+
+  const jdSkills = SKILLS_DICTIONARY.filter((skill) => matchesSkill(normalizedJD, skill));
+  const jdSkillSet = new Set(jdSkills);
+  const matched = jdSkills.filter((skill) => matchesSkill(normalizedResume, skill));
+  const matchedSet = new Set(matched);
+  const missing = jdSkills.filter((skill) => !matchedSet.has(skill));
+  const optional = SKILLS_DICTIONARY.filter(
+    (skill) => !jdSkillSet.has(skill) && matchesSkill(normalizedResume, skill)
+  );
+
+  return { jdSkills, matched, missing, optional };
+}
+
+function detectDegree(text) {
+  const normalized = normalizeText(text);
+  if (/\bph\.?d\b/.test(normalized)) return 'phd';
+  if (/\bmaster(?:'s)?\b|\bm\.?s\.?\b|\bm\.?eng\b|\bm\.?sc\b/.test(normalized)) return 'master';
+  if (/\bbachelor(?:'s)?\b|\bb\.?s\.?\b|\bb\.?eng\b|\bb\.?a\.?\b|\bundergraduate\b/.test(normalized))
+    return 'bachelor';
+  if (/\bhigh\s*school\b|\bhighschool\b/.test(normalized)) return 'highschool';
+  return 'unknown';
+}
+
+function extractExperienceYearsFromJD(text) {
+  const normalized = normalizeText(text);
+  const patterns = [
+    /(\d+)\s*\+\s*years?\s*of/,
+    /at\s*least\s*(\d+)\s*years?/,
+    /minimum\s*(?:of\s*)?(\d+)\s*years?/,
+    /(\d+)\s*(?:to|-)\s*\d+\s*years?/,
+    /(\d+)\s*years?\s*(?:of\s*)?experience/,
+    /experience[^.]{0,30}?(\d+)\s*years?/,
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) return parseInt(match[1], 10);
+  }
+  return 0;
+}
+
+function extractExperienceYearsFromResume(text) {
+  const normalized = normalizeText(text);
+  const explicit = normalized.match(/(\d+)\s*\+?\s*years?\s*(?:of\s*)?experience/);
+  if (explicit) return parseInt(explicit[1], 10);
+
+  const yearMatches = [...normalized.matchAll(/\b(20\d{2}|19\d{2})\b/g)];
+  if (yearMatches.length >= 2) {
+    const years = yearMatches.map((m) => parseInt(m[1], 10));
+    return Math.max(0, Math.max(...years) - Math.min(...years));
+  }
+  return 0;
+}
+
+module.exports = {
+  normalizeText,
   analyzeSkills,
   detectDegree,
   extractExperienceYearsFromJD,
   extractExperienceYearsFromResume,
-  normalizeText,
-} = require('../services/extractionService');
-const {
-  buildRecommendations,
-  computeATSScore,
-  computeEducationMatch,
-  computeExperienceMatch,
-  computeOverallScore,
-  computeSkillMatchScore,
-} = require('../services/scoringService');
-const { analyzeSchema } = require('../utils/validation');
-
-async function analyzeResume(req, res, next) {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'resumePdf file is required' });
-    }
-
-    const parsedInput = analyzeSchema.safeParse(req.body);
-    if (!parsedInput.success) {
-      return res.status(400).json({ message: parsedInput.error.issues[0].message });
-    }
-
-    const { jobDescriptionText, jobTitle = '', company = '' } = parsedInput.data;
-    const pdfData = await pdfParse(req.file.buffer);
-    const resumeText = pdfData.text || '';
-
-    const skills = analyzeSkills(jobDescriptionText, resumeText);
-    const skillMatchScore = computeSkillMatchScore(skills);
-
-    const requiredYears = extractExperienceYearsFromJD(jobDescriptionText);
-    const candidateYears = extractExperienceYearsFromResume(resumeText);
-    const experience = computeExperienceMatch(requiredYears, candidateYears);
-
-    const education = computeEducationMatch(detectDegree(jobDescriptionText), detectDegree(resumeText));
-
-    const normalizedResume = normalizeText(resumeText);
-    const hasEmail = /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/.test(resumeText);
-    const hasPhone = /(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{3}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}/.test(resumeText);
-    const hasSections = {
-      experience: /\bexperience\b/i.test(normalizedResume),
-      skills: /\bskills\b/i.test(normalizedResume),
-      education: /\beducation\b/i.test(normalizedResume),
-    };
-
-    const keywordCoverage = skills.jdSkills.length
-      ? skills.matched.length / skills.jdSkills.length
-      : 0;
-
-    const { atsScore, warnings } = computeATSScore({
-      resumeText,
-      hasEmail,
-      hasPhone,
-      hasSections,
-      keywordCoverage,
-    });
-
-    const overallScore = computeOverallScore({
-      skillMatchScore,
-      experienceScore: experience.score,
-      educationScore: education.score,
-      atsScore,
-    });
-
-    const recommendations = buildRecommendations({
-      skills,
-      atsWarnings: warnings,
-      experience,
-      education,
-    });
-
-    return res.status(200).json({
-      resumeFileName: req.file.originalname,
-      resumeText,
-      jobDescriptionText,
-      jobTitle,
-      company,
-      overallScore,
-      atsScore,
-      skillMatchScore,
-      experience,
-      education,
-      skills: {
-        matched: skills.matched,
-        missing: skills.missing,
-        optional: skills.optional,
-      },
-      recommendations,
-      atsWarnings: warnings,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-module.exports = {
-  analyzeResume,
 };
