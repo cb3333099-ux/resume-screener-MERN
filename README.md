@@ -105,6 +105,7 @@ npm run dev
 ```
 
 Client runs at `http://localhost:5173` and server runs at `http://localhost:5000`.
+`VITE_API_URL` can be set as either `http://localhost:5000` or `http://localhost:5000/api`.
 
 ## Sample Testing Data
 

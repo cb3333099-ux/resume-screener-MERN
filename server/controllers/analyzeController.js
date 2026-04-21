@@ -1,4 +1,6 @@
-const { default: pdfParse } = require('pdf-parse');
+const pdfParseModule = require('pdf-parse');
+const pdfParse = pdfParseModule?.default || pdfParseModule;
+const PDFParse = pdfParseModule?.PDFParse || pdfParseModule?.default?.PDFParse;
 const {
   analyzeSkills,
   detectDegree,
@@ -16,6 +18,23 @@ const {
 } = require('../services/scoringService');
 const { analyzeSchema } = require('../utils/validation');
 
+async function extractPdfText(buffer) {
+  if (typeof pdfParse === 'function') {
+    return pdfParse(buffer);
+  }
+
+  if (typeof PDFParse === 'function') {
+    const parser = new PDFParse({ data: buffer });
+    try {
+      return await parser.getText();
+    } finally {
+      await parser.destroy?.();
+    }
+  }
+
+  throw new Error('pdf-parse is not configured correctly');
+}
+
 async function analyzeResume(req, res, next) {
   try {
     if (!req.file) {
@@ -28,8 +47,11 @@ async function analyzeResume(req, res, next) {
     }
 
     const { jobDescriptionText, jobTitle = '', company = '' } = parsedInput.data;
-    const pdfData = await pdfParse(req.file.buffer);
+    const pdfData = await extractPdfText(req.file.buffer);
     const resumeText = pdfData.text || '';
+    if (!resumeText.trim()) {
+      return res.status(400).json({ message: 'Could not extract text from the uploaded PDF' });
+    }
 
     const skills = analyzeSkills(jobDescriptionText, resumeText);
     const skillMatchScore = computeSkillMatchScore(skills);
@@ -95,6 +117,10 @@ async function analyzeResume(req, res, next) {
       atsWarnings: warnings,
     });
   } catch (error) {
+    if (error?.name === 'InvalidPDFException' || /pdf/i.test(error?.message || '')) {
+      error.statusCode = 400;
+      error.message = 'Invalid or unreadable PDF file';
+    }
     next(error);
   }
 }
