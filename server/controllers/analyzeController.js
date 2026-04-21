@@ -1,4 +1,4 @@
-const pdfParse = require('pdf-parse');
+const { default: pdfParse } = require('pdf-parse');
 const {
   analyzeSkills,
   detectDegree,
