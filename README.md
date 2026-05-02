@@ -87,18 +87,18 @@ resume-screener-MERN/
 ### 1) Server
 
 ```bash
-cd /home/runner/work/resume-screener-MERN/resume-screener-MERN/server
+cd server
 cp .env.example .env
 npm install
 npm run dev
 ```
 
-Set `MONGODB_URI` in `.env` when you have your connection string.
+Set `MONGODB_URI` in `server/.env` to your MongoDB connection string (Atlas or local).
 
 ### 2) Client
 
 ```bash
-cd /home/runner/work/resume-screener-MERN/resume-screener-MERN/client
+cd client
 cp .env.example .env
 npm install
 npm run dev
