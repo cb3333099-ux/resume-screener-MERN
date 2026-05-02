@@ -1,4 +1,12 @@
-const { SKILLS_DICTIONARY } = require('../utils/skillsDict');
+const { SKILLS_DICTIONARY, SKILLS_CATEGORIES } = require('../utils/skillsDict');
+
+// Build a skill → category lookup map for O(1) category resolution
+const SKILL_CATEGORY_MAP = {};
+for (const [category, skills] of Object.entries(SKILLS_CATEGORIES)) {
+  for (const skill of skills) {
+    SKILL_CATEGORY_MAP[skill] = category;
+  }
+}
 
 function normalizeText(text) {
   return text.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -10,6 +18,16 @@ function escapeRegex(str) {
 
 function matchesSkill(normalizedText, skill) {
   return new RegExp(`(?<![a-z0-9])${escapeRegex(skill)}(?![a-z0-9])`).test(normalizedText);
+}
+
+function groupByCategory(skillList) {
+  const grouped = {};
+  for (const skill of skillList) {
+    const cat = SKILL_CATEGORY_MAP[skill] || 'Other';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(skill);
+  }
+  return grouped;
 }
 
 function analyzeSkills(jdText, resumeText) {
@@ -25,7 +43,13 @@ function analyzeSkills(jdText, resumeText) {
     (skill) => !jdSkillSet.has(skill) && matchesSkill(normalizedResume, skill)
   );
 
-  return { jdSkills, matched, missing, optional };
+  const skillsByCategory = {
+    matched: groupByCategory(matched),
+    missing: groupByCategory(missing),
+    optional: groupByCategory(optional),
+  };
+
+  return { jdSkills, matched, missing, optional, skillsByCategory };
 }
 
 function detectDegree(text) {

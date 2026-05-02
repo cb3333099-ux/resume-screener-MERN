@@ -114,6 +114,7 @@ async function analyzeResume(req, res, next) {
         matched: skills.matched,
         missing: skills.missing,
         optional: skills.optional,
+        byCategory: skills.skillsByCategory,
       },
       recommendations,
       atsWarnings: warnings,
