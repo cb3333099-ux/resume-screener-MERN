@@ -26,7 +26,20 @@ async function extractPdfText(buffer) {
   if (typeof PDFParse === 'function') {
     const parser = new PDFParse({ data: buffer });
     try {
-      return await parser.getText();
+      await parser.load();
+      const result = await parser.getText();
+      // getText() may return a string, an array of page strings, or an object
+      let text;
+      if (typeof result === 'string') {
+        text = result;
+      } else if (Array.isArray(result)) {
+        text = result.join('\n');
+      } else if (result && typeof result.text === 'string') {
+        text = result.text;
+      } else {
+        text = String(result || '');
+      }
+      return { text };
     } finally {
       await parser.destroy?.();
     }
