@@ -63,7 +63,7 @@ resume-screener-MERN/
 
 - Resume PDF upload + job description input
 - Scoring: overall, ATS, skills, experience, education
-- Skills analysis: matched/missing/optional
+- Skills analysis: matched/missing/optional grouped by category (Languages, Frontend, Backend, Databases, Cloud, DevOps, Testing, ML/Data, Methodologies)
 - 3–5 prioritized recommendations
 - MongoDB history persistence for analyses
 - Job description bookmarks
@@ -113,7 +113,9 @@ Use sample JDs in `sample-job-descriptions.md`. For a resume PDF, export any exi
 
 ## Verification Checklist
 
-- [x] Analyze endpoint returns complete ATS + match payload
+- [x] Analyze endpoint returns complete ATS + match payload with `skills.byCategory` groupings
+- [x] Skills tab displays matched/missing/optional chips grouped by category (Languages, Frontend, Backend, etc.)
+- [x] Graceful fallback to flat skill arrays for older saved analyses
 - [x] Save/list/get/delete analyses from MongoDB
 - [x] Save/list/delete bookmarks
 - [x] Compare two saved analyses in UI
