@@ -106,6 +106,8 @@ async function analyzeResume(req, res, next) {
       overallScore,
       atsScore,
       skillMatchScore,
+      matchPercentage: skillMatchScore,
+      hasSections,
       experience,
       education,
       skills: {
