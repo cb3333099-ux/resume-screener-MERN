@@ -9,3 +9,6 @@ client/.env
 uploads/
 .DS_Store
 npm-debug.log*
+
+# Generated presentation output
+presentation.pdf

@@ -1,0 +1,12 @@
+{
+  "name": "resume-screener-mern",
+  "version": "1.0.0",
+  "description": "MERN Resume Screener — root workspace scripts",
+  "private": true,
+  "scripts": {
+    "generate-presentation": "marp presentation.md --pdf --output presentation.pdf && echo \"✅ presentation.pdf generated successfully!\""
+  },
+  "devDependencies": {
+    "@marp-team/marp-cli": "^4.3.1"
+  }
+}
