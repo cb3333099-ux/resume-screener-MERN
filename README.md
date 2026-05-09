@@ -111,6 +111,13 @@ Client runs at `http://localhost:5173` and server runs at `http://localhost:5000
 
 Use sample JDs in `sample-job-descriptions.md`. For a resume PDF, export any existing resume to PDF and upload in sidebar.
 
+## Project Report
+
+A comprehensive academic project report is available in the `docs/` folder:
+
+- **[Project Report (Markdown)](docs/PROJECT_REPORT.md)** — Full 43-page academic report covering introduction, objectives, literature survey, system design, architecture diagrams, database schemas, API documentation, algorithm pseudocode, test cases, and references.
+- **[Report Customization Guide](docs/REPORT_GUIDE.md)** — Instructions for filling in student details, adding screenshots, converting to PDF/DOCX, and formatting for submission.
+
 ## Verification Checklist
 
 - [x] Analyze endpoint returns complete ATS + match payload with `skills.byCategory` groupings
